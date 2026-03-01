@@ -16,6 +16,13 @@ function AppContent() {
   const { isAuthenticated, user, allUsers } = useStore();
   const [currentPage, setCurrentPage] = useState('dashboard');
 
+  // ensure that when authentication state changes we land on dashboard
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      setCurrentPage('dashboard');
+    }
+  }, [isAuthenticated]);
+
   if (!isAuthenticated) {
     return <AuthPage />;
   }

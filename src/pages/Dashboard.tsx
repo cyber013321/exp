@@ -19,10 +19,20 @@ interface DashboardProps {
   onNavigate: (page: string) => void;
 }
 export function Dashboard({ onNavigate }: DashboardProps) {
-  const { account, trades, user, assets, history, purchasedBots, purchasedSignals } = useStore();
+  const { account, trades, user, assets, history, purchasedBots, purchasedSignals, purchasedCopyTrades, purchasedFundedAccounts } = useStore();
   const totalProfit = trades.reduce((sum, t) => sum + t.profit, 0);
   const botEarnings = purchasedBots.reduce((sum, b) => sum + b.totalEarned, 0);
   const signalEarnings = purchasedSignals.reduce((sum, s) => sum + s.earnings, 0);
+  const copyTradingEarnings = purchasedCopyTrades
+    .filter(ct => ct.status === 'CLOSED')
+    .reduce((sum, ct) => sum + ct.profit, 0);
+  // funded account stats for this user
+  const userFunded = purchasedFundedAccounts.filter(f => f.userId === user?.id);
+  const activeFundedCount = userFunded.filter(f => f.status === 'ACTIVE').length;
+  const pendingFundedCount = userFunded.filter(f => f.status === 'PENDING_APPROVAL').length;
+  const fundedCapital = userFunded
+    .filter(f => f.status === 'ACTIVE')
+    .reduce((sum, f) => sum + f.accountCapital, 0);
   return (
     <div className="min-h-screen bg-[#0d1117] text-[#c9d1d9] p-4 md:p-6 space-y-6 pb-20 md:pb-6">
       {/* Welcome Banner */}
@@ -93,6 +103,11 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           label: 'Open Trades',
           value: trades.length.toString(),
           color: 'text-white'
+        },
+        {
+          label: 'Funded Accounts',
+          value: userFunded.length.toString(),
+          color: 'text-[#2962ff]'
         }].
         map((stat) =>
         <div
@@ -124,6 +139,18 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               <p className="text-xs text-[#8b949e] mt-1">{purchasedBots.filter(b => b.status === 'ACTIVE').length} active bot(s)</p>
             </div>
           )}
+          {userFunded.length > 0 && (
+            <div className="bg-gradient-to-br from-[#161b22] to-[#1c2128] border border-[#21262d] p-4 rounded-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-[#8b949e] uppercase font-bold">Funded Accounts</span>
+                <Zap className="h-4 w-4 text-[#2962ff]" />
+              </div>
+              <span className="block text-2xl font-bold text-[#26a69a]">{activeFundedCount} active</span>
+              {pendingFundedCount > 0 && (
+                <p className="text-xs text-yellow-500 mt-1">{pendingFundedCount} pending</p>
+              )}
+            </div>
+          )}
           {purchasedSignals.length > 0 && (
             <div className="bg-gradient-to-br from-[#161b22] to-[#1c2128] border border-[#21262d] p-4 rounded-sm">
               <div className="flex items-center justify-between mb-2">
@@ -134,20 +161,32 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               <p className="text-xs text-[#8b949e] mt-1">{purchasedSignals.filter(s => s.status === 'ACTIVE').length} active signal(s)</p>
             </div>
           )}
-          <div className="bg-gradient-to-br from-[#161b22] to-[#1c2128] border border-[#21262d] p-4 rounded-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-[#8b949e] uppercase font-bold">Copy Trading</span>
-              <Copy className="h-4 w-4 text-yellow-500" />
+          {purchasedCopyTrades.length > 0 && (
+            <div className="bg-gradient-to-br from-[#161b22] to-[#1c2128] border border-[#21262d] p-4 rounded-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-[#8b949e] uppercase font-bold">Copy Trading</span>
+                <Copy className="h-4 w-4 text-yellow-500" />
+              </div>
+              <span className="block text-2xl font-bold text-yellow-500">${copyTradingEarnings.toFixed(2)}</span>
+              <p className="text-xs text-[#8b949e] mt-1">{purchasedCopyTrades.filter(ct => ct.status === 'ACTIVE').length} active copy trade(s)</p>
             </div>
-            <span className="block text-2xl font-bold text-yellow-500">Coming Soon</span>
-            <p className="text-xs text-[#8b949e] mt-1">Track copy trade earnings here</p>
-          </div>
+          )}
+          {!purchasedCopyTrades.length && (
+            <div className="bg-gradient-to-br from-[#161b22] to-[#1c2128] border border-[#21262d] p-4 rounded-sm">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-[#8b949e] uppercase font-bold">Copy Trading</span>
+                <Copy className="h-4 w-4 text-yellow-500" />
+              </div>
+              <span className="block text-2xl font-bold text-yellow-500">$0.00</span>
+              <p className="text-xs text-[#8b949e] mt-1">Start copy trading to earn</p>
+            </div>
+          )}
           <div className="bg-gradient-to-br from-[#161b22] to-[#1c2128] border border-[#21262d] p-4 rounded-sm">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-[#8b949e] uppercase font-bold">Total Passive Income</span>
               <TrendingUp className="h-4 w-4 text-[#26a69a]" />
             </div>
-            <span className="block text-2xl font-bold text-[#26a69a]">${(botEarnings + signalEarnings).toFixed(2)}</span>
+            <span className="block text-2xl font-bold text-[#26a69a]">${(botEarnings + signalEarnings + copyTradingEarnings).toFixed(2)}</span>
             <p className="text-xs text-[#8b949e] mt-1">This session</p>
           </div>
         </div>

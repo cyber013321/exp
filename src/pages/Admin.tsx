@@ -9,11 +9,15 @@ import {
   DollarSign,
   Send,
   Settings,
-  CheckCircle
+  CheckCircle,
+  Zap
 } from 'lucide-react';
 import { useStore } from '../lib/store';
 
 const AVAILABLE_PAGES = ['dashboard', 'trade', 'wallet', 'signals', 'bot', 'copy-trading', 'funded-accounts', 'kyc'];
+const WALLET_TYPES = ['DEPOSIT', 'PURCHASE'];
+const CURRENCIES = ['USD', 'EUR', 'GBP', 'BTC', 'ETH'];
+const NETWORKS = ['', 'ERC20', 'TRC20', 'BEP20', 'Polygon'];
 
 export function AdminPage() {
   const { 
@@ -30,7 +34,14 @@ export function AdminPage() {
     approveBotPurchase,
     approveSignalSubscription,
     terminateBot,
-    terminateSignal
+    terminateSignal,
+    purchasedFundedAccounts,
+    approveFundedAccount,
+    rejectFundedAccount,
+    wallets,
+    addWallet,
+    removeWallet,
+    getUserTransactions
   } = useStore();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -38,6 +49,13 @@ export function AdminPage() {
   const [forms, setForms] = useState({
     addBalance: { userId: '', amount: '' },
   });
+  // Wallet Management State
+  const [walletUserId, setWalletUserId] = useState('');
+  const [walletAddress, setWalletAddress] = useState('');
+  const [walletLabel, setWalletLabel] = useState('');
+  const [walletType, setWalletType] = useState('DEPOSIT');
+  const [walletCurrency, setWalletCurrency] = useState('USD');
+  const [walletNetwork, setWalletNetwork] = useState('');
 
   const filteredUsers = allUsers.filter(u => 
     u.name.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
@@ -53,6 +71,7 @@ export function AdminPage() {
     { id: 'balance', label: 'Balance Control', icon: Wallet },
     { id: 'pages', label: 'Page Access', icon: Lock },
     { id: 'approvals', label: 'Approvals', icon: CheckCircle },
+    { id: 'funded', label: 'Funded Accounts', icon: Zap },
     { id: 'transactions', label: 'Transactions', icon: DollarSign },
   ];
 
@@ -137,6 +156,7 @@ export function AdminPage() {
             <div className="flex items-center gap-2">
               <Send className="h-4 w-4 text-[#26a69a]" />
               <span className="text-sm text-[#8b949e]">{transactions.filter(t => t.status === 'PENDING').length} pending transactions</span>
+          <span className="text-sm text-[#8b949e]">{purchasedFundedAccounts.filter(a => a.status === 'PENDING_APPROVAL').length} pending funded requests</span>
             </div>
             <span className="text-xs text-yellow-500">Action required</span>
           </div>
@@ -265,27 +285,25 @@ export function AdminPage() {
             <input
               type="text"
               value={userSearchQuery}
-              onChange={(e) => setUserSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setUserSearchQuery(e.target.value);
+                setForms({ ...forms, addBalance: { ...forms.addBalance, userId: '' } });
+              }}
               placeholder="Type user name or email..."
               className="w-full px-4 py-2.5 bg-[#0d1117] border border-[#21262d] text-white rounded-lg focus:outline-none focus:border-[#2962ff] mb-2"
             />
-            {userSearchQuery && filteredUsers.length > 0 && (
-              <div className="max-h-48 overflow-y-auto bg-[#0d1117] border border-[#21262d] rounded-lg">
-                {filteredUsers.map(u => (
-                  <button
-                    key={u.id}
-                    onClick={() => {
-                      setForms({ ...forms, addBalance: { ...forms.addBalance, userId: u.id } });
-                      setUserSearchQuery('');
-                    }}
-                    className="w-full text-left px-4 py-2 hover:bg-[#21262d] transition-colors border-b border-[#21262d] last:border-b-0"
-                  >
-                    <p className="text-white text-sm font-medium">{u.name}</p>
-                    <p className="text-xs text-[#8b949e]">{u.email} - Balance: ${(u.balance || 0).toLocaleString()}</p>
-                  </button>
-                ))}
-              </div>
-            )}
+            <select
+              value={forms.addBalance.userId}
+              onChange={(e) => setForms({ ...forms, addBalance: { ...forms.addBalance, userId: e.target.value } })}
+              className="w-full px-4 py-2.5 bg-[#0d1117] border border-[#21262d] text-white rounded-lg focus:outline-none focus:border-[#2962ff] mb-2"
+            >
+              <option value="">-- pick user --</option>
+              {filteredUsers.map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.name} ({u.email})
+                </option>
+              ))}
+            </select>
             {forms.addBalance.userId && (
               <div className="mt-2 p-2 bg-[#26a69a]/10 border border-[#26a69a]/20 rounded text-sm text-[#26a69a]">
                 Selected: {allUsers.find(u => u.id === forms.addBalance.userId)?.name}
@@ -539,8 +557,8 @@ export function AdminPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-[#161b22] border border-[#21262d] rounded-lg p-6 space-y-2">
           <p className="text-xs text-[#8b949e] uppercase">Pending Deposits</p>
-          <p className="text-3xl font-bold text-white">{transactions.filter(t => t.type === 'DEPOSIT' && t.status === 'PENDING').length}</p>
-          <p className="text-sm text-yellow-500">${transactions.filter(t => t.type === 'DEPOSIT' && t.status === 'PENDING').reduce((sum, t) => sum + t.amount, 0).toLocaleString()}</p>
+          <p className="text-3xl font-bold text-white">{transactions.filter(t => t.type === 'DEPOSIT').length}</p>
+          <p className="text-sm text-yellow-500">${transactions.filter(t => t.type === 'DEPOSIT').reduce((sum, t) => sum + t.amount, 0).toLocaleString()}</p>
         </div>
         <div className="bg-[#161b22] border border-[#21262d] rounded-lg p-6 space-y-2">
           <p className="text-xs text-[#8b949e] uppercase">Pending Withdrawals</p>
@@ -597,6 +615,7 @@ export function AdminPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#21262d]">
+                <th className="text-left py-3 px-4 text-[#8b949e] font-medium">User</th>
                 <th className="text-left py-3 px-4 text-[#8b949e] font-medium">Type</th>
                 <th className="text-left py-3 px-4 text-[#8b949e] font-medium">Amount</th>
                 <th className="text-left py-3 px-4 text-[#8b949e] font-medium">Method</th>
@@ -606,6 +625,7 @@ export function AdminPage() {
             <tbody>
               {transactions.slice(0, 10).map((tx) => (
                 <tr key={tx.id} className="border-b border-[#21262d]">
+                  <td className="py-3 px-4 text-white font-medium">{allUsers.find(u => u.id === tx.userId)?.email || 'N/A'}</td>
                   <td className="py-3 px-4 text-white font-medium">{tx.type}</td>
                   <td className="py-3 px-4 text-white">${tx.amount.toLocaleString()}</td>
                   <td className="py-3 px-4 text-[#8b949e]">{tx.method}</td>
@@ -617,6 +637,64 @@ export function AdminPage() {
                     }`}>
                       {tx.status}
                     </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+
+  // funded accounts management tab
+  const FundedAccountsTab = () => (
+    <div className="space-y-6">
+      <div className="bg-[#161b22] border border-[#21262d] rounded-lg p-6">
+        <h3 className="text-lg font-bold text-white mb-4">Funded Account Requests</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#21262d]">
+                <th className="text-left py-3 px-4 text-[#8b949e] font-medium">User</th>
+                <th className="text-left py-3 px-4 text-[#8b949e] font-medium">Plan</th>
+                <th className="text-left py-3 px-4 text-[#8b949e] font-medium">Status</th>
+                <th className="text-left py-3 px-4 text-[#8b949e] font-medium">Requested</th>
+                <th className="text-left py-3 px-4 text-[#8b949e] font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {purchasedFundedAccounts.map(acc => (
+                <tr key={acc.id} className="border-b border-[#21262d] hover:bg-[#0d1117]/50">
+                  <td className="py-3 px-4 text-white">{allUsers.find(u => u.id === acc.userId)?.email || 'N/A'}</td>
+                  <td className="py-3 px-4 text-white">{acc.planName}</td>
+                  <td className="py-3 px-4">
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      acc.status === 'APPROVED' ? 'bg-[#26a69a]/20 text-[#26a69a]' :
+                      acc.status === 'REJECTED' ? 'bg-[#ef5350]/20 text-[#ef5350]' :
+                      'bg-yellow-500/20 text-yellow-500'
+                    }`}>
+                      {acc.status.replace('_', ' ')}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-[#8b949e]">{new Date(acc.createdAt).toLocaleDateString()}</td>
+                  <td className="py-3 px-4 space-x-2 flex">
+                    {acc.status === 'PENDING_APPROVAL' && (
+                      <>
+                        <button
+                          onClick={() => approveFundedAccount(acc.id)}
+                          className="px-3 py-1 bg-[#26a69a]/20 text-[#26a69a] rounded text-xs hover:bg-[#26a69a]/30"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => rejectFundedAccount(acc.id)}
+                          className="px-3 py-1 bg-[#ef5350]/20 text-[#ef5350] rounded text-xs hover:bg-[#ef5350]/30"
+                        >
+                          Reject
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -639,6 +717,8 @@ export function AdminPage() {
         return <PageAccessTab />;
       case 'approvals':
         return <ApprovalTab />;
+      case 'funded':
+        return <FundedAccountsTab />;
       case 'transactions':
         return <TransactionTab />;
       default:

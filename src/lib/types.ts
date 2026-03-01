@@ -77,6 +77,7 @@ export type Transaction = {
   method: string;
   status: TransactionStatus;
   date: number;
+  userId?: string;
 };
 
 export type PurchasedBot = {
@@ -107,6 +108,76 @@ export type PurchasedSignal = {
   winRate: number;
   earnings: number;
 };
-  status: TransactionStatus;
-  date: number;
+
+export type CopyTrade = {
+  id: string;
+  userId: string;
+  tradesId: number;
+  traderName: string;
+  allocation: number;
+  status: 'ACTIVE' | 'CLOSED';
+  copiedTrades: number;
+  profit: number;
+  startDate: number;
+  endDate?: number;
+  durationValue: string;
+  durationType: 'hours' | 'days';
+  winRate: string;
+  risk: 'Low' | 'Medium' | 'High';
+  performance?: number;
+
+export type FundedAccountPurchase = {
+  id: string;
+  userId: string;
+  planId: string;
+  planName: string;
+  capital: number;
+  price: number;
+  status: 'PENDING_APPROVAL' | 'APPROVED' | 'ACTIVE' | 'COMPLETED' | 'REJECTED';
+  purchasedAt: number;
+  approvedAt?: number;
+  profitTarget: number;
+  maxDrawdown: number;
+  creditedAt?: number;
+};
+
+export type BotTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  performance: number;
+  winRate: number;
+  trades: number;
+  type: string;
+  risk: 'Low' | 'Medium' | 'High';
+  maxDrawdown: number;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type SignalTemplate = {
+  id: string;
+  providerName: string;
+  description: string;
+  cost: number;
+  winRate: number;
+  trades: number;
+  avgReturn: number;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type Wallet = {
+  id: string;
+  userId: string;
+  address: string;
+  label: string;
+  type: 'DEPOSIT' | 'PURCHASE';
+  currency: string;
+  network?: string;
+  createdAt: number;
+};
 };

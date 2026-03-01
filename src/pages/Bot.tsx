@@ -25,6 +25,8 @@ export function BotPage() {
     purchasedBots, 
     purchaseBot,
     allocateBotCapital,
+    pauseBot,
+    resumeBot,
     user 
   } = useStore();
   const [paymentModal, setPaymentModal] = useState({
@@ -299,7 +301,7 @@ export function BotPage() {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="bg-[#0d1117] p-3 rounded-lg border border-[#21262d]">
                           <span className="text-xs text-[#8b949e]">Allocated</span>
-                          <span className="block text-baseFont-bold text-white">
+                          <span className="block text-base font-bold text-white">
                             ${purchase.allocatedAmount.toFixed(2)}
                           </span>
                         </div>
@@ -319,17 +321,33 @@ export function BotPage() {
                           <Plus className="h-4 w-4" /> Allocate Capital
                         </button>
                       ) : (
-                        <div className="text-xs text-[#8b949e] text-center">
-                          Bot is actively trading with ${purchase.allocatedAmount.toFixed(2)}
+                        <div className="space-y-2">
+                          <div className="text-xs text-[#8b949e] text-center">
+                            Bot is actively trading with ${purchase.allocatedAmount.toFixed(2)}
+                          </div>
+                          <button
+                            onClick={() => pauseBot(purchase.id)}
+                            className="w-full py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-500 rounded-lg font-bold text-sm transition-all border border-yellow-500/30"
+                          >
+                            ⏸ Pause Bot
+                          </button>
                         </div>
                       )}
                     </>
                   )}
 
-                  {purchase.status === 'PENDING_APPROVAL' && (
-                    <div className="text-center py-4 text-sm text-yellow-500">
-                      Waiting for admin approval...
-                    </div>
+                  {purchase.status === 'PAUSED' && (
+                    <>
+                      <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-center mb-3">
+                        <p className="text-yellow-500 text-sm font-bold">⏸ Bot is paused</p>
+                      </div>
+                      <button
+                        onClick={() => resumeBot(purchase.id)}
+                        className="w-full py-2 bg-[#26a69a] hover:bg-teal-600 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all"
+                      >
+                        ▶ Resume Bot
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

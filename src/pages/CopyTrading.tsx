@@ -21,10 +21,8 @@ const AVAILABLE_TRADERS = [
 ];
 
 export function CopyTradingPage() {
-  const { account } = useStore();
+  const { account, purchasedCopyTrades, followTrader, stopCopyTrading } = useStore();
   const [activeTab, setActiveTab] = useState<'browse' | 'active' | 'history'>('browse');
-  const [activeCopies, setActiveCopies] = useState<any[]>([]);
-  const [tradeHistory, setTradeHistory] = useState<any[]>([]);
   const [selectedTrader, setSelectedTrader] = useState<any>(null);
   const [allocateAmount, setAllocateAmount] = useState('');
   const [durationValue, setDurationValue] = useState('24');
@@ -43,22 +41,7 @@ export function CopyTradingPage() {
       return;
     }
 
-    const newCopy = {
-      id: `copy_${trader.id}_${Date.now()}`,
-      tradesId: trader.id,
-      traderName: trader.name,
-      allocation,
-      status: 'ACTIVE',
-      copiedTrades: 0,
-      profit: 0,
-      startDate: Date.now(),
-      durationValue,
-      durationType,
-      winRate: trader.winRate,
-      risk: trader.risk,
-    };
-
-    setActiveCopies([...activeCopies, newCopy]);
+    followTrader(trader, allocation, durationValue, durationType);
     setSelectedTrader(null);
     setAllocateAmount('');
     setDurationValue('24');
@@ -66,25 +49,15 @@ export function CopyTradingPage() {
   };
 
   const handleStopCopy = (copyId: string) => {
-    const copyTrade = activeCopies.find(c => c.id === copyId);
-    if (copyTrade) {
-      setTradeHistory([
-        {
-          ...copyTrade,
-          status: 'CLOSED',
-          endDate: Date.now(),
-          performance: Math.random() * 20 - 5,
-        },
-        ...tradeHistory
-      ]);
-      setActiveCopies(activeCopies.filter(c => c.id !== copyId));
-    }
+    stopCopyTrading(copyId);
   };
 
   const filteredTraders = AVAILABLE_TRADERS.filter(t =>
     filterRisk === 'all' ? true : t.risk === filterRisk
   );
 
+  const activeCopies = purchasedCopyTrades.filter(c => c.status === 'ACTIVE');
+  const tradeHistory = purchasedCopyTrades.filter(c => c.status === 'CLOSED');
   const activeCopiesCount = activeCopies.length;
   const totalAllocation = activeCopies.reduce((sum, c) => sum + c.allocation, 0);
 

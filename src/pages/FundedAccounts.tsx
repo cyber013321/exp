@@ -4,7 +4,7 @@ import { PaymentModal } from '../components/PaymentModal';
 import { useStore } from '../lib/store';
 
 export function FundedAccountsPage() {
-  const { account } = useStore();
+  const { account, user, purchasedFundedAccounts, purchaseFundedAccount } = useStore();
   const [paymentModal, setPaymentModal] = useState({
     isOpen: false,
     plan: null as any
@@ -118,9 +118,10 @@ export function FundedAccountsPage() {
 
   const handleUpgrade = (plan: any) => {
     if (plan.price === 0) {
-      // Free plan auto-approval
+      // Free plan auto-approval and immediate purchase
+      purchaseFundedAccount(plan.id, plan.name, plan.capital, plan.price, plan.profitTarget, plan.maxDrawdown);
       setPaymentModal({ isOpen: false, plan: null });
-      // Open application modal
+      alert('✅ Free funded account request submitted');
     } else {
       setPaymentModal({
         isOpen: true,
@@ -131,8 +132,18 @@ export function FundedAccountsPage() {
 
   const handlePaymentComplete = () => {
     // Handle payment completion
-    console.log('Payment completed for plan:', paymentModal.plan);
+    if (paymentModal.plan) {
+      const plan = paymentModal.plan;
+      purchaseFundedAccount(plan.id, plan.name, plan.capital, plan.price, plan.profitTarget, plan.maxDrawdown);
+      alert('✅ Funded account request submitted');
+    }
+    setPaymentModal({ isOpen: false, plan: null });
   };
+
+  // derive current user's funded account requests
+  const userFunded = user
+    ? purchasedFundedAccounts.filter(a => a.userId === user.id)
+    : [];
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-12 pb-20 md:pb-6">
@@ -201,6 +212,31 @@ export function FundedAccountsPage() {
           ))}
         </div>
       </div>
+
+      {/* User Funded Account Status */}
+      {user && (
+        <div className="bg-[#161b22] border border-[#21262d] rounded-lg p-6 mb-8">
+          <h2 className="text-2xl font-bold text-white mb-4">My Funded Account Requests</h2>
+          {userFunded.length > 0 ? (
+            <div className="space-y-4">
+              {userFunded.map((acc) => (
+                <div key={acc.id} className="p-4 bg-[#0d1117] rounded-lg border border-[#21262d] flex justify-between items-center">
+                  <div>
+                    <p className="text-white font-medium">{acc.planName}</p>
+                    <p className="text-xs text-[#8b949e]">Capital: ${acc.accountCapital.toLocaleString()}</p>
+                    <p className="text-xs text-yellow-500">Status: {acc.status}</p>
+                  </div>
+                  {acc.status === 'PENDING_APPROVAL' && (
+                    <span className="px-3 py-1 bg-yellow-500/20 text-yellow-500 rounded text-xs font-bold">Pending</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[#8b949e]">No funded account requests yet.</p>
+          )}
+        </div>
+      )}
 
       {/* Pricing Plans */}
       <div className="space-y-6">

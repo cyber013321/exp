@@ -14,7 +14,12 @@ import {
   Transaction,
   TradeType,
   PurchasedBot,
-  PurchasedSignal } from
+  PurchasedSignal,
+  CopyTrade,
+  FundedAccountPurchase,
+  BotTemplate,
+  SignalTemplate,
+  Wallet } from
 './types';
 import { generateId, randomPriceChange } from './utils';
 // Initial Market Data (Extended with 80+ pairs)
@@ -117,6 +122,11 @@ interface StoreContextType {
   signals: Signal[];
   purchasedBots: PurchasedBot[];
   purchasedSignals: PurchasedSignal[];
+  purchasedCopyTrades: CopyTrade[];
+  purchasedFundedAccounts: FundedAccountPurchase[];
+  botTemplates: BotTemplate[];
+  signalTemplates: SignalTemplate[];
+  wallets: Wallet[];
   isAuthenticated: boolean;
   botActive: boolean;
   login: (email: string, password?: string) => { success: boolean; isAdmin?: boolean; error?: string };
@@ -143,8 +153,32 @@ interface StoreContextType {
   approveBotPurchase: (botPurchaseId: string) => void;
   approveSignalSubscription: (signalSubId: string) => void;
   allocateBotCapital: (botPurchaseId: string, amount: number) => void;
+  pauseBot: (botPurchaseId: string) => void;
+  resumeBot: (botPurchaseId: string) => void;
   terminateBot: (botPurchaseId: string) => void;
   terminateSignal: (signalSubId: string) => void;
+  // Copy Trading Methods
+  followTrader: (trader: any, allocation: number, durationValue: string, durationType: 'hours' | 'days') => void;
+  stopCopyTrading: (copyTradeId: string) => void;
+  closeCopyTrade: (copyTradeId: string, profit: number) => void;
+  // Copy Trading Methods
+  followTrader: (trader: any, allocation: number, durationValue: string, durationType: 'hours' | 'days') => void;
+  stopCopyTrading: (copyTradeId: string) => void;
+  // Funded Account Methods
+  purchaseFundedAccount: (planId: string, planName: string, capital: number, price: number, profitTarget: number, maxDrawdown: number) => void;
+  approveFundedAccount: (accountId: string) => void;
+  rejectFundedAccount: (accountId: string) => void;
+  // Bot Template Methods
+  addBotTemplate: (name: string, description: string, price: number, performance: number, winRate: number, trades: number, type: string, risk: 'Low' | 'Medium' | 'High', maxDrawdown: number) => void;
+  editBotTemplate: (botId: string, updates: Partial<BotTemplate>) => void;
+  deleteBotTemplate: (botId: string) => void;
+  // Signal Template Methods
+  addSignalTemplate: (providerName: string, description: string, cost: number, winRate: number, trades: number, avgReturn: number) => void;
+  editSignalTemplate: (signalId: string, updates: Partial<SignalTemplate>) => void;
+  deleteSignalTemplate: (signalId: string) => void;
+  // Wallet Methods
+  addWallet: (userId: string, address: string, label: string, type: 'DEPOSIT' | 'PURCHASE', currency: string, network?: string) => void;
+  removeWallet: (walletId: string) => void;
   // Admin Methods
   addBalance: (userId: string, amount: number) => void;
   removeBalance: (userId: string, amount: number) => void;
@@ -153,6 +187,7 @@ interface StoreContextType {
   approveTransaction: (transactionId: string) => void;
   rejectTransaction: (transactionId: string) => void;
   getUserById: (userId: string) => User | undefined;
+  getUserTransactions: (userId: string) => Transaction[];
 }
 const StoreContext = createContext<StoreContextType | null>(null);
 
@@ -162,6 +197,11 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
   const [botActive, setBotActive] = useState(false);
   const [purchasedBots, setPurchasedBots] = useState<PurchasedBot[]>([]);
   const [purchasedSignals, setPurchasedSignals] = useState<PurchasedSignal[]>([]);
+  const [purchasedCopyTrades, setPurchasedCopyTrades] = useState<CopyTrade[]>([]);
+  const [purchasedFundedAccounts, setPurchasedFundedAccounts] = useState<FundedAccountPurchase[]>([]);
+  const [botTemplates, setBotTemplates] = useState<BotTemplate[]>([]);
+  const [signalTemplates, setSignalTemplates] = useState<SignalTemplate[]>([]);
+  const [wallets, setWallets] = useState<Wallet[]>([]);
   // Account State
   const [account, setAccount] = useState<Account>({
     balance: 10000,
@@ -173,6 +213,18 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
     type: 'DEMO',
     currency: 'USD'
   });
+
+  // whenever the logged-in user changes, mirror their balance in account
+  useEffect(() => {
+    if (user) {
+      setAccount((prev) => ({
+        ...prev,
+        balance: user.balance || 0,
+        equity: user.balance || 0,
+        freeMargin: user.balance || 0
+      }));
+    }
+  }, [user]);
   const [assets, setAssets] = useState<Asset[]>(INITIAL_ASSETS);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [history, setHistory] = useState<Trade[]>([]);
@@ -455,6 +507,13 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
       }
 
       setUser(loginUser);
+      // initialize account for this user
+      setAccount((prev) => ({
+        ...prev,
+        balance: loginUser.balance || 0,
+        equity: loginUser.balance || 0,
+        freeMargin: loginUser.balance || 0
+      }));
       return { success: true, isAdmin: false };
     }
 
@@ -470,6 +529,23 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
         u.id === userId ? { ...u, balance: (u.balance || 0) + amount } : u
       )
     );
+    // update current user/account if matches
+    if (user && user.id === userId) {
+      const newBal = (user.balance || 0) + amount;
+      setUser({ ...user, balance: newBal });
+      setAccount((prev) => ({ ...prev, balance: newBal }));
+    }
+    // also record a transaction so it appears in history and admin dashboard
+    const tx: Transaction = {
+      id: generateId(),
+      userId,
+      type: 'DEPOSIT',
+      amount,
+      method: 'admin',
+      status: 'COMPLETED',
+      date: Date.now()
+    };
+    setTransactions((prev) => [tx, ...prev]);
   };
 
   const removeBalance = (userId: string, amount: number) => {
@@ -478,6 +554,21 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
         u.id === userId ? { ...u, balance: Math.max(0, (u.balance || 0) - amount) } : u
       )
     );
+    if (user && user.id === userId) {
+      const newBal = Math.max(0, (user.balance || 0) - amount);
+      setUser({ ...user, balance: newBal });
+      setAccount((prev) => ({ ...prev, balance: newBal }));
+    }
+    const tx: Transaction = {
+      id: generateId(),
+      userId,
+      type: 'WITHDRAWAL',
+      amount,
+      method: 'admin',
+      status: 'COMPLETED',
+      date: Date.now()
+    };
+    setTransactions((prev) => [tx, ...prev]);
   };
 
   const togglePageLock = (userId: string, page: string) => {
@@ -521,6 +612,21 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
         ...prev,
         balance: prev.balance + tx.amount
       }));
+      // update user balances
+      if (tx.userId) {
+        setAllUsers((prev) =>
+          prev.map((u) =>
+            u.id === tx.userId
+              ? { ...u, balance: (u.balance ?? 0) + tx.amount }
+              : u
+          )
+        );
+        if (user && user.id === tx.userId) {
+          const newBal = (user.balance ?? 0) + tx.amount;
+          setUser({ ...user, balance: newBal });
+          setAccount((prev) => ({ ...prev, balance: newBal }));
+        }
+      }
     }
   };
 
@@ -708,27 +814,23 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
     })
     );
   };
+  // record a deposit request; always pending until admin approval
   const deposit = (amount: number, method: string) => {
     const tx: Transaction = {
       id: generateId(),
+      userId: user?.id || '',
       type: 'DEPOSIT',
       amount,
       method,
-      status: method === 'crypto' ? 'PENDING' : 'COMPLETED',
+      status: 'PENDING',
       date: Date.now()
     };
     setTransactions((prev) => [tx, ...prev]);
-    // Only add to balance immediately for non-crypto deposits
-    if (method !== 'crypto') {
-      setAccount((prev) => ({
-        ...prev,
-        balance: prev.balance + amount
-      }));
-    }
   };
   const withdraw = (amount: number, method: string) => {
     const tx: Transaction = {
       id: generateId(),
+      userId: user?.id || '',
       type: 'WITHDRAWAL',
       amount,
       method,
@@ -742,8 +844,244 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
       ...prev,
       balance: prev.balance - amount
     }));
+    if (user) {
+      const newBal = Math.max(0, (user.balance || 0) - amount);
+      setUser({ ...user, balance: newBal });
+      setAllUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, balance: newBal } : u))
+      );
+    }
   };
   const toggleBot = (active: boolean) => setBotActive(active);
+
+  // Funded Account Methods
+  const purchaseFundedAccount = (planId: string, planName: string, capital: number, price: number, profitTarget: number, maxDrawdown: number) => {
+    if (!user || (user.balance ?? 0) < price) return;
+    // deduct cost if applicable
+    if (price > 0) {
+      setAccount((prev) => ({ ...prev, balance: prev.balance - price }));
+    }
+    const account: FundedAccountPurchase = {
+      id: generateId(),
+      userId: user.id,
+      planId,
+      planName,
+      accountCapital: capital,
+      platformFee: price,
+      profitTarget,
+      maxDrawdown,
+      status: 'PENDING_APPROVAL',
+      createdAt: Date.now(),
+      approvedAt: null
+    };
+    setPurchasedFundedAccounts((prev) => [...prev, account]);
+    alert('✅ Funded account purchase request submitted');
+  };
+
+  const approveFundedAccount = (accountId: string) => {
+    // find account first then update state so we have the data
+    let approved: FundedAccountPurchase | undefined;
+    setPurchasedFundedAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === accountId) {
+          approved = { ...acc, status: 'ACTIVE', approvedAt: Date.now() };
+          return approved;
+        }
+        return acc;
+      })
+    );
+    if (approved) {
+      setAllUsers((prev) =>
+        prev.map((u) =>
+          u.id === approved!.userId
+            ? { ...u, balance: (u.balance ?? 0) + approved!.accountCapital }
+            : u
+        )
+      );
+      // update current user/account if applicable
+      if (user && user.id === approved.userId) {
+        const newBal = (user.balance ?? 0) + approved.accountCapital;
+        setUser({ ...user, balance: newBal });
+        setAccount((prev) => ({ ...prev, balance: newBal }));
+      }
+    }
+    alert('✅ Funded account approved and capital credited');
+  };
+
+  const rejectFundedAccount = (accountId: string) => {
+    setPurchasedFundedAccounts((prev) =>
+      prev.map((acc) =>
+        acc.id === accountId ? { ...acc, status: 'REJECTED' } : acc
+      )
+    );
+    // Refund the platform fee
+    const account = purchasedFundedAccounts.find((a) => a.id === accountId);
+    if (account) {
+      setAllUsers((prev) =>
+        prev.map((u) =>
+          u.id === account.userId
+            ? { ...u, balance: (u.balance ?? 0) + account.platformFee }
+            : u
+        )
+      );
+    }
+    alert('✅ Funded account rejected and fee refunded');
+  };
+
+  // Bot Template Methods
+  const addBotTemplate = (name: string, description: string, price: number, performance: number, winRate: number, trades: number, type: string, risk: 'Low' | 'Medium' | 'High', maxDrawdown: number) => {
+    if (!user) return;
+    const newBot: BotTemplate = {
+      id: generateId(),
+      name,
+      description,
+      price,
+      performance,
+      winRate,
+      trades,
+      type,
+      risk,
+      maxDrawdown,
+      createdBy: user.id,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    setBotTemplates((prev) => [...prev, newBot]);
+    alert('✅ Bot template created successfully');
+  };
+
+  const editBotTemplate = (botId: string, updates: Partial<BotTemplate>) => {
+    setBotTemplates((prev) =>
+      prev.map((bot) =>
+        bot.id === botId
+          ? { ...bot, ...updates, updatedAt: Date.now() }
+          : bot
+      )
+    );
+    alert('✅ Bot template updated');
+  };
+
+  const deleteBotTemplate = (botId: string) => {
+    setBotTemplates((prev) => prev.filter((bot) => bot.id !== botId));
+    alert('✅ Bot template deleted');
+  };
+
+  // Signal Template Methods
+  const addSignalTemplate = (providerName: string, description: string, cost: number, winRate: number, trades: number, avgReturn: number) => {
+    if (!user) return;
+    const newSignal: SignalTemplate = {
+      id: generateId(),
+      providerName,
+      description,
+      cost,
+      winRate,
+      trades,
+      avgReturn,
+      createdBy: user.id,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    setSignalTemplates((prev) => [...prev, newSignal]);
+    alert('✅ Signal template created successfully');
+  };
+
+  const editSignalTemplate = (signalId: string, updates: Partial<SignalTemplate>) => {
+    setSignalTemplates((prev) =>
+      prev.map((signal) =>
+        signal.id === signalId
+          ? { ...signal, ...updates, updatedAt: Date.now() }
+          : signal
+      )
+    );
+    alert('✅ Signal template updated');
+  };
+
+  const deleteSignalTemplate = (signalId: string) => {
+    setSignalTemplates((prev) => prev.filter((signal) => signal.id !== signalId));
+    alert('✅ Signal template deleted');
+  };
+
+  // Wallet Methods
+  const addWallet = (userId: string, address: string, label: string, type: 'DEPOSIT' | 'PURCHASE', currency: string, network?: string) => {
+    const newWallet: Wallet = {
+      id: generateId(),
+      userId,
+      address,
+      label,
+      type,
+      currency,
+      network,
+      createdAt: Date.now()
+    };
+    setWallets((prev) => [...prev, newWallet]);
+    alert('✅ Wallet added successfully');
+  };
+
+  const removeWallet = (walletId: string) => {
+    setWallets((prev) => prev.filter((w) => w.id !== walletId));
+    alert('✅ Wallet removed');
+  };
+
+  // Copy Trading Methods
+  const followTrader = (trader: any, allocation: number, durationValue: string, durationType: 'hours' | 'days') => {
+    if (!user) return;
+    const newCopy: CopyTrade = {
+      id: generateId(),
+      userId: user.id,
+      tradesId: Date.now(),
+      traderName: trader?.name || 'Unknown',
+      allocation,
+      status: 'ACTIVE',
+      copiedTrades: 0,
+      profit: 0,
+      startDate: Date.now(),
+      durationValue,
+      durationType,
+      winRate: '0%',
+      risk: (trader && trader.risk) || 'Medium',
+      performance: trader?.performance
+    };
+    setPurchasedCopyTrades((prev) => [...prev, newCopy]);
+    alert('✅ Now copying trader');
+  };
+
+  const stopCopyTrading = (copyTradeId: string) => {
+    setPurchasedCopyTrades((prev) =>
+      prev.map((ct) => (ct.id === copyTradeId ? { ...ct, status: 'CLOSED', endDate: Date.now() } : ct))
+    );
+    alert('✅ Stopped copy trading');
+  };
+
+  const closeCopyTrade = (copyTradeId: string, profit: number) => {
+    setPurchasedCopyTrades((prev) =>
+      prev.map((ct) => (ct.id === copyTradeId ? { ...ct, status: 'CLOSED', profit, endDate: Date.now() } : ct))
+    );
+  };
+
+  // Pause/Resume Bot
+  const pauseBot = (botPurchaseId: string) => {
+    setPurchasedBots((prev) =>
+      prev.map((bot) =>
+        bot.id === botPurchaseId ? { ...bot, paused: true } : bot
+      )
+    );
+    alert('✅ Bot paused');
+  };
+
+  const resumeBot = (botPurchaseId: string) => {
+    setPurchasedBots((prev) =>
+      prev.map((bot) =>
+        bot.id === botPurchaseId ? { ...bot, paused: false } : bot
+      )
+    );
+    alert('✅ Bot resumed');
+  };
+
+  // Get user transactions
+  const getUserTransactions = (userId: string): Transaction[] => {
+    return transactions.filter((t) => t.userId === userId);
+  };
+
   return (
     <StoreContext.Provider
       value={{
@@ -757,6 +1095,11 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
         signals,
         purchasedBots,
         purchasedSignals,
+        purchasedCopyTrades,
+        purchasedFundedAccounts,
+        botTemplates,
+        signalTemplates,
+        wallets,
         isAuthenticated: !!user,
         botActive,
         login,
@@ -772,15 +1115,32 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
         approveBotPurchase,
         approveSignalSubscription,
         allocateBotCapital,
+        pauseBot,
+        resumeBot,
         terminateBot,
         terminateSignal,
+        followTrader,
+        stopCopyTrading,
+        closeCopyTrade,
+        purchaseFundedAccount,
+        approveFundedAccount,
+        rejectFundedAccount,
+        addBotTemplate,
+        editBotTemplate,
+        deleteBotTemplate,
+        addSignalTemplate,
+        editSignalTemplate,
+        deleteSignalTemplate,
+        addWallet,
+        removeWallet,
         addBalance,
         removeBalance,
         togglePageLock,
         toggleUserLock,
         approveTransaction,
         rejectTransaction,
-        getUserById
+        getUserById,
+        getUserTransactions
       }}>
 
       {children}

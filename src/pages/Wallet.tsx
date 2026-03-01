@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 export function WalletPage() {
-  const { account, deposit, withdraw, transactions } = useStore();
+  const { account, deposit, withdraw, transactions, user, getUserTransactions } = useStore();
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'history' | 'overview'>('overview');
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('crypto');
@@ -32,7 +32,6 @@ export function WalletPage() {
   const [withdrawAddress, setWithdrawAddress] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'completed' | 'pending' | 'failed'>('all');
   const [searchTx, setSearchTx] = useState('');
-  const [countdown, setCountdown] = useState<number | null>(null);
 
   const cryptoOptions = [
     {
@@ -94,41 +93,37 @@ export function WalletPage() {
 
   const currentCrypto = cryptoOptions.find((c) => c.id === selectedCrypto);
 
+  // Get current user's transactions only
+  const userTransactions = user ? getUserTransactions(user.id) : [];
+
   // Calculate statistics
-  const totalDeposited = transactions
+  const totalDeposited = userTransactions
     .filter(tx => tx.type === 'DEPOSIT' && tx.status === 'COMPLETED')
     .reduce((sum, tx) => sum + tx.amount, 0);
 
-  const totalWithdrawn = transactions
+  const totalWithdrawn = userTransactions
     .filter(tx => tx.type === 'WITHDRAWAL' && tx.status === 'COMPLETED')
     .reduce((sum, tx) => sum + tx.amount, 0);
 
-  const pendingWithdrawals = transactions
+  const pendingWithdrawals = userTransactions
     .filter(tx => tx.type === 'WITHDRAWAL' && tx.status === 'PENDING')
     .reduce((sum, tx) => sum + tx.amount, 0);
 
   // Filter transactions
-  const filteredTransactions = transactions.filter(tx => {
+  const filteredTransactions = userTransactions.filter(tx => {
     if (filterStatus !== 'all' && tx.status !== filterStatus) return false;
     if (searchTx && !tx.method.toLowerCase().includes(searchTx.toLowerCase())) return false;
     return true;
   });
 
-  const handleDeposit = () => {
+  // called when user confirms payment
+  const submitDeposit = () => {
     if (!amount) return;
     deposit(parseFloat(amount), method);
-    // Set 20-minute countdown only for crypto deposits  
-    if (method === 'crypto') {
-      setCountdown(1200); // 20 minutes in seconds
-    }
-    setStep(3);
-    setTimeout(() => {
-      if (method !== 'crypto') {
-        setStep(1);
-        setAmount('');
-        setCountdown(null);
-      }
-    }, 2000);
+    // show in history and return to overview
+    setActiveTab('history');
+    setStep(1);
+    setAmount('');
   };
 
   const handleWithdraw = () => {
@@ -164,20 +159,6 @@ export function WalletPage() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  // Countdown timer for crypto deposits
-  React.useEffect(() => {
-    if (countdown === null || countdown <= 0) return;
-    const timer = setInterval(() => {
-      setCountdown(prev => {
-        if (prev === null || prev <= 1) {
-          clearInterval(timer);
-          return null;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [countdown]);
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-white p-4 md:p-6 space-y-6 pb-20 md:pb-6">
@@ -579,54 +560,45 @@ export function WalletPage() {
             {/* Step 3: Confirmation */}
             {step === 3 && (
               <div className="bg-[#161b22] border border-[#21262d] rounded-lg p-12 text-center space-y-4">
-                {method === 'crypto' ? (
-                  <>
-                    <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto">
-                      <Clock className="h-8 w-8 text-yellow-500 animate-spin" />
-                    </div>
-                    <h3 className="text-2xl font-bold text-white">Deposit Pending...</h3>
-                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-4 mt-2">
-                      <p className="text-sm text-yellow-500 font-bold mb-2">⏱️ 20 Minute Confirmation Window</p>
-                      <p className="text-3xl font-mono font-bold text-yellow-500 mb-2">
-                        {Math.floor((countdown || 0) / 60)}:
-                        {String((countdown || 0) % 60).padStart(2, '0')}
-                      </p>
-                      <p className="text-xs text-yellow-400">
-                        Waiting for network confirmation ({countdown || 0} seconds remaining)
-                      </p>
-                    </div>
-                    <p className="text-[#8b949e] text-sm">
-                      \${amount} is being confirmed on the blockchain. Do not close this window.
+                <h3 className="text-2xl font-bold text-white">Confirm Deposit</h3>
+                <p className="text-white">Amount: ${amount}</p>
+                <p className="text-white">Method: {method === 'crypto' ? selectedCrypto : method}</p>
+                {method === 'crypto' && currentCrypto && (
+                  <div className="bg-[#0d1117] p-4 rounded-lg border border-[#21262d] space-y-3">
+                    <p className="text-sm text-[#8b949e]">
+                      Send {currentCrypto.name} ({currentCrypto.network}) to:
                     </p>
-                    <div className="bg-[#0d1117] border border-[#21262d] rounded p-3 mt-4 text-left">
-                      <p className="text-xs text-[#8b949e] mb-2">Status: <span className="text-yellow-500 font-bold">PENDING</span></p>
-                      <p className="text-xs text-[#8b949e]">Amount: <span className="text-white font-mono">\${amount}</span></p>
-                      <p className="text-xs text-[#8b949e]">Method: <span className="text-white">{selectedCrypto}</span></p>
+                    <div className="flex items-center gap-2 bg-[#161b22] p-3 rounded border border-[#21262d]">
+                      <code className="flex-1 text-[#26a69a] font-mono text-xs break-all">
+                        {currentCrypto.address}
+                      </code>
+                      <button
+                        onClick={() => handleCopyAddress(currentCrypto.address, 'crypto')}
+                        className="flex-shrink-0 p-2 hover:bg-[#21262d] rounded transition"
+                      >
+                        {copied === 'crypto' ? (
+                          <CheckCircle className="h-4 w-4 text-[#26a69a]" />
+                        ) : (
+                          <Copy className="h-4 w-4 text-[#8b949e]" />
+                        )}
+                      </button>
                     </div>
-                    <button
-                      onClick={() => setActiveTab('history')}
-                      className="mt-4 px-6 py-3 bg-[#2962ff] hover:bg-blue-700 text-white font-bold rounded transition"
-                    >
-                      View in History
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-16 h-16 bg-[#26a69a]/20 rounded-full flex items-center justify-center mx-auto">
-                      <CheckCircle className="h-8 w-8 text-[#26a69a]" />
-                    </div>
-                    <h3 className="text-2xl font-bold text-white">Deposit Successful!</h3>
-                    <p className="text-[#8b949e]">
-                      \${amount} has been added to your trading account. Your funds are now available.
-                    </p>
-                    <button
-                      onClick={() => setActiveTab('overview')}
-                      className="mt-4 px-6 py-3 bg-[#26a69a] hover:bg-teal-600 text-white font-bold rounded transition"
-                    >
-                      Back to Overview
-                    </button>
-                  </>
+                  </div>
                 )}
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={() => setStep(2)}
+                    className="px-6 py-3 border border-[#21262d] text-white font-bold rounded hover:bg-[#21262d] transition"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={submitDeposit}
+                    className="px-6 py-3 bg-[#26a69a] hover:bg-teal-600 text-white font-bold rounded transition"
+                  >
+                    I have paid
+                  </button>
+                </div>
               </div>
             )}
           </div>
