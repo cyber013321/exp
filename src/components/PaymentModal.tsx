@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Clock, Wallet, Zap, X, Check, AlertCircle, Copy } from 'lucide-react';
 
 interface PaymentModalProps {
@@ -44,9 +44,10 @@ export function PaymentModal({
 
     const timer = setInterval(() => {
       setCountdown((prev) => {
-        if (prev <= 0) {
+        if (prev <= 1) {
           clearInterval(timer);
-          onClose();
+          // Auto-close on timeout
+          setTimeout(() => onClose(), 500);
           return 0;
         }
         return prev - 1;

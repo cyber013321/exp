@@ -31,23 +31,31 @@ export function AdminPage() {
     rejectTransaction,
     purchasedBots,
     purchasedSignals,
+    purchasedCopyTrades,
     approveBotPurchase,
     approveSignalSubscription,
     terminateBot,
     terminateSignal,
+    closeCopyTrade,
     purchasedFundedAccounts,
     approveFundedAccount,
     rejectFundedAccount,
     wallets,
     addWallet,
     removeWallet,
-    getUserTransactions
+    getUserTransactions,
+    adminCreateBot,
+    adminCreateSignal,
+    adminCreateCopyTrade
   } = useStore();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [forms, setForms] = useState({
     addBalance: { userId: '', amount: '' },
+    createBot: { userId: '', botName: '', allocatedAmount: '', performance: '', totalEarned: '' },
+    createSignal: { userId: '', providerName: '', allocation: '', winRate: '', cost: '' },
+    createCopyTrade: { userId: '', traderName: '', allocation: '', winRate: '', durationValue: '7', durationType: 'days' }
   });
   // Wallet Management State
   const [walletUserId, setWalletUserId] = useState('');
@@ -73,6 +81,7 @@ export function AdminPage() {
     { id: 'approvals', label: 'Approvals', icon: CheckCircle },
     { id: 'funded', label: 'Funded Accounts', icon: Zap },
     { id: 'transactions', label: 'Transactions', icon: DollarSign },
+    { id: 'manual', label: 'Manual Creation', icon: Plus },
   ];
 
   const handleAddBalance = () => {
@@ -361,6 +370,8 @@ export function AdminPage() {
       </div>
     </div>
   );
+
+
 
   // Page Access Control Tab
   const PageAccessTab = () => (
@@ -705,6 +716,279 @@ export function AdminPage() {
     </div>
   );
 
+  // Manual subscription management tab
+  const ManualTab = () => {
+    const [form, setForm] = useState({
+      userId: '',
+      botName: '',
+      botAmt: '',
+      botPerf: '',
+      sigProvider: '',
+      sigAlloc: '',
+      sigWinRate: '',
+      copyTrader: '',
+      copyAlloc: '',
+      copyDuration: '7'
+    });
+
+    const handleCreateBot = (e?: React.MouseEvent) => {
+      if (e) e.preventDefault();
+      if (form.userId && form.botName && form.botAmt && form.botPerf) {
+        adminCreateBot(form.userId, form.botName, parseFloat(form.botAmt), parseFloat(form.botPerf));
+        setForm(prev => ({ ...prev, botName: '', botAmt: '', botPerf: '', userId: '' }));
+      }
+    };
+    const handleCreateSignal = (e?: React.MouseEvent) => {
+      if (e) e.preventDefault();
+      if (form.userId && form.sigProvider && form.sigAlloc && form.sigWinRate) {
+        adminCreateSignal(form.userId, form.sigProvider, parseFloat(form.sigAlloc), parseFloat(form.sigWinRate));
+        setForm(prev => ({ ...prev, sigProvider: '', sigAlloc: '', sigWinRate: '', userId: '' }));
+      }
+    };
+    const handleCreateCopy = (e?: React.MouseEvent) => {
+      if (e) e.preventDefault();
+      if (form.userId && form.copyTrader && form.copyAlloc && form.copyDuration) {
+        adminCreateCopyTrade(form.userId, form.copyTrader, parseFloat(form.copyAlloc), form.copyDuration, 'days', 'Medium');
+        setForm(prev => ({ ...prev, copyTrader: '', copyAlloc: '', copyDuration: '7', userId: '' }));
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        <h3 className="text-lg font-bold text-white">Manual Subscriptions</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Bot form */}
+          <div className="bg-[#161b22] border border-[#21262d] rounded-lg p-6 space-y-3">
+            <h4 className="text-white font-bold">New Bot</h4>
+            <select
+              value={form.userId}
+              onChange={(e) => setForm({ ...form, userId: e.target.value })}
+              className="w-full px-3 py-2 bg-[#0d1117] border border-[#21262d] rounded text-white cursor-pointer focus:border-[#2962ff] focus:outline-none"
+            >
+              <option value="">Select user</option>
+              {allUsers.map((u) => (
+                <option key={u.id} value={u.id}>{u.email}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              placeholder="Bot name"
+              value={form.botName}
+              onChange={(e) => setForm({ ...form, botName: e.target.value })}
+              className="w-full px-3 py-2 bg-[#0d1117] border border-[#21262d] rounded text-white cursor-text focus:border-[#2962ff] focus:outline-none"
+            />
+            <input
+              type="number"
+              placeholder="Allocation"
+              value={form.botAmt}
+              onChange={(e) => setForm({ ...form, botAmt: e.target.value })}
+              className="w-full px-3 py-2 bg-[#0d1117] border border-[#21262d] rounded text-white cursor-text focus:border-[#2962ff] focus:outline-none"
+            />
+            <input
+              type="number"
+              placeholder="Performance %"
+              value={form.botPerf}
+              onChange={(e) => setForm({ ...form, botPerf: e.target.value })}
+              className="w-full px-3 py-2 bg-[#0d1117] border border-[#21262d] rounded text-white cursor-text focus:border-[#2962ff] focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleCreateBot}
+              className="w-full py-2 bg-[#26a69a] hover:bg-teal-600 text-white font-bold rounded"
+            >Create Bot</button>
+          </div>
+
+          {/* Signal form */}
+          <div className="bg-[#161b22] border border-[#21262d] rounded-lg p-6 space-y-3">
+            <h4 className="text-white font-bold">New Signal</h4>
+            <select
+              value={form.userId}
+              onChange={(e) => setForm({ ...form, userId: e.target.value })}
+              className="w-full px-3 py-2 bg-[#0d1117] border border-[#21262d] rounded text-white cursor-pointer focus:border-[#2962ff] focus:outline-none"
+            >
+              <option value="">Select user</option>
+              {allUsers.map((u) => (
+                <option key={u.id} value={u.id}>{u.email}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              placeholder="Provider name"
+              value={form.sigProvider}
+              onChange={(e) => setForm({ ...form, sigProvider: e.target.value })}
+              className="w-full px-3 py-2 bg-[#0d1117] border border-[#21262d] rounded text-white cursor-text focus:border-[#2962ff] focus:outline-none"
+            />
+            <input
+              type="number"
+              placeholder="Allocation"
+              value={form.sigAlloc}
+              onChange={(e) => setForm({ ...form, sigAlloc: e.target.value })}
+              className="w-full px-3 py-2 bg-[#0d1117] border border-[#21262d] rounded text-white cursor-text focus:border-[#2962ff] focus:outline-none"
+            />
+            <input
+              type="number"
+              placeholder="Win rate %"
+              value={form.sigWinRate}
+              onChange={(e) => setForm({ ...form, sigWinRate: e.target.value })}
+              className="w-full px-3 py-2 bg-[#0d1117] border border-[#21262d] rounded text-white cursor-text focus:border-[#2962ff] focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleCreateSignal}
+              className="w-full py-2 bg-[#2962ff] hover:bg-[#1f57d8] text-white font-bold rounded"
+            >Create Signal</button>
+          </div>
+
+          {/* Copy trade form */}
+          <div className="bg-[#161b22] border border-[#21262d] rounded-lg p-6 space-y-3">
+            <h4 className="text-white font-bold">New Copy Trade</h4>
+            <select
+              value={form.userId}
+              onChange={(e) => setForm({ ...form, userId: e.target.value })}
+              className="w-full px-3 py-2 bg-[#0d1117] border border-[#21262d] rounded text-white cursor-pointer focus:border-[#2962ff] focus:outline-none"
+            >
+              <option value="">Select user</option>
+              {allUsers.map((u) => (
+                <option key={u.id} value={u.id}>{u.email}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              placeholder="Trader name"
+              value={form.copyTrader}
+              onChange={(e) => setForm({ ...form, copyTrader: e.target.value })}
+              className="w-full px-3 py-2 bg-[#0d1117] border border-[#21262d] rounded text-white cursor-text focus:border-[#2962ff] focus:outline-none"
+            />
+            <input
+              type="number"
+              placeholder="Allocation"
+              value={form.copyAlloc}
+              onChange={(e) => setForm({ ...form, copyAlloc: e.target.value })}
+              className="w-full px-3 py-2 bg-[#0d1117] border border-[#21262d] rounded text-white cursor-text focus:border-[#2962ff] focus:outline-none"
+            />
+            <input
+              type="number"
+              placeholder="Duration (days)"
+              value={form.copyDuration}
+              onChange={(e) => setForm({ ...form, copyDuration: e.target.value })}
+              className="w-full px-3 py-2 bg-[#0d1117] border border-[#21262d] rounded text-white cursor-text focus:border-[#2962ff] focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleCreateCopy}
+              className="w-full py-2 bg-[#ef5350] hover:bg-red-600 text-white font-bold rounded"
+            >Create Copy Trade</button>
+          </div>
+        </div>
+
+        {/* Existing subscriptions lists */}
+        <div className="space-y-6">
+          <h4 className="text-white font-bold">Purchased Bots</h4>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#21262d]">
+                  <th className="px-4 py-2 text-left text-[#8b949e]">User</th>
+                  <th className="px-4 py-2 text-left text-[#8b949e]">Bot</th>
+                  <th className="px-4 py-2 text-right text-[#8b949e]">Allocation</th>
+                  <th className="px-4 py-2 text-left text-[#8b949e]">Status</th>
+                  <th className="px-4 py-2 text-right text-[#8b949e]">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchasedBots.map(b => (
+                  <tr key={b.id} className="border-b border-[#21262d] hover:bg-[#0d1117]/50">
+                    <td className="px-4 py-2 text-white">{allUsers.find(u => u.id === b.userId)?.email || 'N/A'}</td>
+                    <td className="px-4 py-2 text-white">{b.botName}</td>
+                    <td className="px-4 py-2 text-right text-white">${b.allocatedAmount.toFixed(2)}</td>
+                    <td className="px-4 py-2 text-white">{b.status}</td>
+                    <td className="px-4 py-2 text-right">
+                      {b.status === 'ACTIVE' && (
+                        <button
+                          onClick={() => terminateBot(b.id)}
+                          className="px-2 py-1 bg-[#ef5350]/20 text-[#ef5350] rounded text-xs hover:bg-[#ef5350]/30"
+                        >Terminate</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h4 className="text-white font-bold">Purchased Signals</h4>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#21262d]">
+                  <th className="px-4 py-2 text-left text-[#8b949e]">User</th>
+                  <th className="px-4 py-2 text-left text-[#8b949e]">Provider</th>
+                  <th className="px-4 py-2 text-right text-[#8b949e]">Allocation</th>
+                  <th className="px-4 py-2 text-left text-[#8b949e]">Status</th>
+                  <th className="px-4 py-2 text-right text-[#8b949e]">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchasedSignals.map(s => (
+                  <tr key={s.id} className="border-b border-[#21262d] hover:bg-[#0d1117]/50">
+                    <td className="px-4 py-2 text-white">{allUsers.find(u => u.id === s.userId)?.email || 'N/A'}</td>
+                    <td className="px-4 py-2 text-white">{s.providerName}</td>
+                    <td className="px-4 py-2 text-right text-white">${s.allocation.toFixed(2)}</td>
+                    <td className="px-4 py-2 text-white">{s.status}</td>
+                    <td className="px-4 py-2 text-right">
+                      {s.status === 'ACTIVE' && (
+                        <button
+                          onClick={() => terminateSignal(s.id)}
+                          className="px-2 py-1 bg-[#ef5350]/20 text-[#ef5350] rounded text-xs hover:bg-[#ef5350]/30"
+                        >Terminate</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h4 className="text-white font-bold">Copy Trades</h4>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#21262d]">
+                  <th className="px-4 py-2 text-left text-[#8b949e]">User</th>
+                  <th className="px-4 py-2 text-left text-[#8b949e]">Trader</th>
+                  <th className="px-4 py-2 text-right text-[#8b949e]">Allocation</th>
+                  <th className="px-4 py-2 text-left text-[#8b949e]">Status</th>
+                  <th className="px-4 py-2 text-right text-[#8b949e]">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchasedCopyTrades.map(ct => (
+                  <tr key={ct.id} className="border-b border-[#21262d] hover:bg-[#0d1117]/50">
+                    <td className="px-4 py-2 text-white">{allUsers.find(u => u.id === ct.userId)?.email || 'N/A'}</td>
+                    <td className="px-4 py-2 text-white">{ct.traderName}</td>
+                    <td className="px-4 py-2 text-right text-white">${ct.allocation.toFixed(2)}</td>
+                    <td className="px-4 py-2 text-white">{ct.status}</td>
+                    <td className="px-4 py-2 text-right">
+                      {ct.status === 'ACTIVE' && (
+                        <button
+                          onClick={() => {
+                            const p = prompt('Enter profit/loss amount');
+                            if (p) closeCopyTrade(ct.id, parseFloat(p));
+                          }}
+                          className="px-2 py-1 bg-[#ef5350]/20 text-[#ef5350] rounded text-xs hover:bg-[#ef5350]/30"
+                        >Close</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderTab = () => {
     switch (activeTab) {
       case 'dashboard':
@@ -721,6 +1005,8 @@ export function AdminPage() {
         return <FundedAccountsTab />;
       case 'transactions':
         return <TransactionTab />;
+      case 'manual':
+        return <ManualTab />;
       default:
         return <DashboardTab />;
     }

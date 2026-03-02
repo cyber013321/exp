@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Zap, DollarSign, TrendingUp, ArrowRight, CheckCircle, Star, Flame, Award, Lock } from 'lucide-react';
 import { PaymentModal } from '../components/PaymentModal';
 import { useStore } from '../lib/store';
@@ -9,6 +9,18 @@ export function FundedAccountsPage() {
     isOpen: false,
     plan: null as any
   });
+
+  const handleClosePayment = useCallback(() => {
+    setPaymentModal({ isOpen: false, plan: null });
+  }, []);
+
+  const handlePaymentDone = useCallback(() => {
+    if (paymentModal.plan) {
+      const plan = paymentModal.plan;
+      purchaseFundedAccount(plan.id, plan.name, plan.capital, plan.price, plan.profitTarget, plan.maxDrawdown);
+    }
+    handleClosePayment();
+  }, [paymentModal.plan, purchaseFundedAccount, handleClosePayment]);
 
   const plans = [
     {
@@ -130,15 +142,7 @@ export function FundedAccountsPage() {
     }
   };
 
-  const handlePaymentComplete = () => {
-    // Handle payment completion
-    if (paymentModal.plan) {
-      const plan = paymentModal.plan;
-      purchaseFundedAccount(plan.id, plan.name, plan.capital, plan.price, plan.profitTarget, plan.maxDrawdown);
-      alert('✅ Funded account request submitted');
-    }
-    setPaymentModal({ isOpen: false, plan: null });
-  };
+
 
   // derive current user's funded account requests
   const userFunded = user
@@ -223,7 +227,7 @@ export function FundedAccountsPage() {
                 <div key={acc.id} className="p-4 bg-[#0d1117] rounded-lg border border-[#21262d] flex justify-between items-center">
                   <div>
                     <p className="text-white font-medium">{acc.planName}</p>
-                    <p className="text-xs text-[#8b949e]">Capital: ${acc.accountCapital.toLocaleString()}</p>
+                    <p className="text-xs text-[#8b949e]">Capital: ${acc.capital.toLocaleString()}</p>
                     <p className="text-xs text-yellow-500">Status: {acc.status}</p>
                   </div>
                   {acc.status === 'PENDING_APPROVAL' && (
@@ -400,11 +404,11 @@ export function FundedAccountsPage() {
       {/* Payment Modal */}
       <PaymentModal
         isOpen={paymentModal.isOpen}
-        onClose={() => setPaymentModal({ isOpen: false, plan: null })}
+        onClose={handleClosePayment}
         amount={paymentModal.plan?.price || 0}
         itemName={`${paymentModal.plan?.name} Funded Account`}
         currentBalance={account.balance}
-        onPaymentComplete={handlePaymentComplete}
+        onPaymentComplete={handlePaymentDone}
       />
     </div>
   );

@@ -1,5 +1,4 @@
 import React, {
-  useCallback,
   useEffect,
   useState,
   createContext,
@@ -149,7 +148,7 @@ interface StoreContextType {
   toggleBot: (active: boolean) => void;
   // Bot/Signal Purchase Methods
   purchaseBot: (botId: string, botName: string, price: number, performance: number) => void;
-  purchaseSignal: (signalId: string, providerName: string, price: number, winRate: number) => void;
+  purchaseSignal: (signalId: string, providerName: string, allocation: number, winRate: number) => void;
   approveBotPurchase: (botPurchaseId: string) => void;
   approveSignalSubscription: (signalSubId: string) => void;
   allocateBotCapital: (botPurchaseId: string, amount: number) => void;
@@ -157,13 +156,12 @@ interface StoreContextType {
   resumeBot: (botPurchaseId: string) => void;
   terminateBot: (botPurchaseId: string) => void;
   terminateSignal: (signalSubId: string) => void;
+  continueSignalTrading: (signalSubId: string) => void;
   // Copy Trading Methods
   followTrader: (trader: any, allocation: number, durationValue: string, durationType: 'hours' | 'days') => void;
+  adminCreateCopyTrade: (userId: string, traderName: string, allocation: number, durationValue: string, durationType: 'hours' | 'days', risk: 'Low' | 'Medium' | 'High', performance?: number) => void;
   stopCopyTrading: (copyTradeId: string) => void;
   closeCopyTrade: (copyTradeId: string, profit: number) => void;
-  // Copy Trading Methods
-  followTrader: (trader: any, allocation: number, durationValue: string, durationType: 'hours' | 'days') => void;
-  stopCopyTrading: (copyTradeId: string) => void;
   // Funded Account Methods
   purchaseFundedAccount: (planId: string, planName: string, capital: number, price: number, profitTarget: number, maxDrawdown: number) => void;
   approveFundedAccount: (accountId: string) => void;
@@ -188,6 +186,9 @@ interface StoreContextType {
   rejectTransaction: (transactionId: string) => void;
   getUserById: (userId: string) => User | undefined;
   getUserTransactions: (userId: string) => Transaction[];
+  convertFundedToBalance: (userId?: string) => void;
+  adminCreateBot: (userId: string, botName: string, allocatedAmount: number, performance: number, totalEarned?: number) => void;
+  adminCreateSignal: (userId: string, providerName: string, allocation: number, winRate: number, cost?: number) => void;
 }
 const StoreContext = createContext<StoreContextType | null>(null);
 
@@ -225,6 +226,71 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
       }));
     }
   }, [user]);
+
+  // Real-time signal earning simulation - updates every 1 second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPurchasedSignals((prev) =>
+        prev.map((sig) => {
+          if (sig.status !== 'ACTIVE' || !sig.activeTrades || sig.activeTrades.length === 0) {
+            return sig;
+          }
+          
+          const now = Date.now();
+          const updatedTrades = sig.activeTrades.map((trade) => {
+            if (trade.completed) return trade;
+            
+            const elapsed = now - trade.startTime;
+            const totalDuration = trade.expectedEndTime - trade.startTime;
+            const progress = Math.min(elapsed / totalDuration, 1);
+            
+            // Fluctuate earnings: use sine wave to make it look natural
+            const fluctuation = Math.sin(progress * Math.PI * 3) * 0.15;
+            const currentEarnings = trade.expectedProfit * (progress * 0.85 + 0.15 + fluctuation);
+            
+            if (progress >= 1) {
+              // Trade completed - lock in final earnings
+              return {
+                ...trade,
+                currentEarnings: trade.expectedProfit,
+                completed: true
+              };
+            }
+            
+            return { ...trade, currentEarnings: Math.max(0, currentEarnings) };
+          });
+          
+          // Check if any trades just completed
+          const completedCount = updatedTrades.filter((t) => t.completed).length;
+          const previousCompletedCount = sig.activeTrades.filter((t) => t.completed).length;
+          
+          if (completedCount > previousCompletedCount) {
+            // New trade completed - add to realized earnings
+            const newlyCompleted = updatedTrades.filter(
+              (t) => t.completed && !sig.activeTrades.find((st) => st.id === t.id && st.completed)
+            );
+            const newEarnings = newlyCompleted.reduce((sum, t) => sum + t.expectedProfit, 0);
+            
+            return {
+              ...sig,
+              activeTrades: updatedTrades,
+              earnings: updatedTrades.reduce((sum, t) => sum + t.currentEarnings, 0),
+              totalEarningsRealized: sig.totalEarningsRealized + newEarnings
+            };
+          }
+          
+          return {
+            ...sig,
+            activeTrades: updatedTrades,
+            earnings: updatedTrades.reduce((sum, t) => sum + t.currentEarnings, 0)
+          };
+        })
+      );
+    }, 1000); // update every 1 second
+    
+    return () => clearInterval(interval);
+  }, []);
+
   const [assets, setAssets] = useState<Asset[]>(INITIAL_ASSETS);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [history, setHistory] = useState<Trade[]>([]);
@@ -670,31 +736,45 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
     alert('✅ Bot purchase request sent. Awaiting admin approval.');
   };
 
-  const purchaseSignal = (signalId: string, providerName: string, price: number, winRate: number) => {
-    if (!user || user.balance === undefined || user.balance < price) {
+
+  const purchaseSignal = (signalId: string, providerName: string, allocation: number, winRate: number) => {
+    if (!user || user.balance === undefined || user.balance < allocation) {
       alert('Insufficient balance');
       return;
     }
+    // profit will be calculated later during approval
     const newSignal: PurchasedSignal = {
       id: generateId(),
       userId: user.id,
       signalId,
       providerName,
-      cost: price,
+      allocation,
+      cost: 0,
       status: 'PENDING_APPROVAL',
       subscribedAt: Date.now(),
+      approvedAt: undefined,
       tradesFollowed: 0,
       winRate,
-      earnings: 0
+      earnings: 0,
+      totalEarningsRealized: 0,
+      activeTrades: []
     };
     setPurchasedSignals((prev) => [...prev, newSignal]);
-    // Deduct from balance
+    // Deduct allocation from balance
     setAccount((prev) => ({
       ...prev,
-      balance: prev.balance - price
+      balance: prev.balance - allocation
     }));
+    if (user) {
+      const newBal = (user.balance || 0) - allocation;
+      setUser({ ...user, balance: newBal });
+      setAllUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, balance: newBal } : u))
+      );
+    }
     alert('✅ Signal subscription request sent. Awaiting admin approval.');
   };
+
 
   const approveBotPurchase = (botPurchaseId: string) => {
     setPurchasedBots((prev) =>
@@ -708,11 +788,29 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
 
   const approveSignalSubscription = (signalSubId: string) => {
     setPurchasedSignals((prev) =>
-      prev.map((sig) =>
-        sig.id === signalSubId
-          ? { ...sig, status: 'ACTIVE', approvedAt: Date.now() }
-          : sig
-      )
+      prev.map((sig) => {
+        if (sig.id === signalSubId) {
+          // start first trade automatically when approved
+          const now = Date.now();
+          const durationMs = (15 + Math.random() * 6) * 60 * 1000; // 15-21 minutes
+          const expectedProfit = sig.allocation * (sig.winRate / 100);
+          const newTrade = {
+            id: generateId(),
+            startTime: now,
+            expectedEndTime: now + durationMs,
+            expectedProfit,
+            currentEarnings: 0,
+            completed: false
+          };
+          return {
+            ...sig,
+            status: 'ACTIVE',
+            approvedAt: now,
+            activeTrades: [newTrade]
+          };
+        }
+        return sig;
+      })
     );
   };
 
@@ -735,22 +833,94 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
   };
 
   const terminateBot = (botPurchaseId: string) => {
+    const bot = purchasedBots.find((b) => b.id === botPurchaseId);
+    if (!bot) return;
+    
+    // credit back net funds: allocation + totalEarned - totalLost
+    const netRefund = bot.allocatedAmount + bot.totalEarned - bot.totalLost;
+    
     setPurchasedBots((prev) =>
-      prev.map((bot) =>
-        bot.id === botPurchaseId
-          ? { ...bot, status: 'CLOSED' }
-          : bot
+      prev.map((b) =>
+        b.id === botPurchaseId ? { ...b, status: 'CLOSED' } : b
       )
+    );
+    
+    // add net funds to user balance
+    if (bot.userId) {
+      setAllUsers((prev) =>
+        prev.map((u) =>
+          u.id === bot.userId
+            ? { ...u, balance: (u.balance ?? 0) + netRefund }
+            : u
+        )
+      );
+      if (user && user.id === bot.userId) {
+        const newBal = (user.balance ?? 0) + netRefund;
+        setUser({ ...user, balance: newBal });
+        setAccount((prev) => ({ ...prev, balance: newBal }));
+      }
+    }
+    alert(
+      `✅ Bot terminated. Net refund: $${netRefund.toFixed(2)} (Allocation: $${bot.allocatedAmount.toFixed(2)} + Earned: $${bot.totalEarned.toFixed(2)} - Lost: $${bot.totalLost.toFixed(2)})`
     );
   };
 
   const terminateSignal = (signalSubId: string) => {
+    const signal = purchasedSignals.find((s) => s.id === signalSubId);
+    if (!signal) return;
+    
+    // credit back: allocation + totalEarningsRealized
+    const totalRefund = signal.allocation + signal.totalEarningsRealized;
+    
     setPurchasedSignals((prev) =>
       prev.map((sig) =>
-        sig.id === signalSubId
-          ? { ...sig, status: 'TERMINATED' }
-          : sig
+        sig.id === signalSubId ? { ...sig, status: 'CLOSED', activeTrades: [] } : sig
       )
+    );
+    
+    if (signal.userId) {
+      setAllUsers((prev) =>
+        prev.map((u) =>
+          u.id === signal.userId
+            ? { ...u, balance: (u.balance ?? 0) + totalRefund }
+            : u
+        )
+      );
+      if (user && user.id === signal.userId) {
+        const newBal = (user.balance ?? 0) + totalRefund;
+        setUser({ ...user, balance: newBal });
+        setAccount((prev) => ({ ...prev, balance: newBal }));
+      }
+    }
+    alert(
+      `✅ Signal terminated. Refund: $${totalRefund.toFixed(2)} (Allocation: $${signal.allocation.toFixed(2)} + Realized Earnings: $${signal.totalEarningsRealized.toFixed(2)})`
+    );
+  };
+
+  const continueSignalTrading = (signalSubId: string) => {
+    // after a trade completes, start next one
+    setPurchasedSignals((prev) =>
+      prev.map((sig) => {
+        if (sig.id === signalSubId && sig.status === 'ACTIVE') {
+          const now = Date.now();
+          const durationMs = (15 + Math.random() * 6) * 60 * 1000; // random 15-21 min
+          const expectedProfit = sig.allocation * (sig.winRate / 100);
+          const newTrade = {
+            id: generateId(),
+            startTime: now,
+            expectedEndTime: now + durationMs,
+            expectedProfit,
+            currentEarnings: 0,
+            completed: false
+          };
+          return {
+            ...sig,
+            activeTrades: [...(sig.activeTrades || []).filter((t) => !t.completed), newTrade],
+            tradesFollowed: sig.tradesFollowed + 1
+          };
+        }
+        return sig
+      })
     );
   };
 
@@ -866,13 +1036,13 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
       userId: user.id,
       planId,
       planName,
-      accountCapital: capital,
-      platformFee: price,
+      capital,
+      price,
       profitTarget,
       maxDrawdown,
       status: 'PENDING_APPROVAL',
-      createdAt: Date.now(),
-      approvedAt: null
+      purchasedAt: Date.now(),
+      approvedAt: undefined
     };
     setPurchasedFundedAccounts((prev) => [...prev, account]);
     alert('✅ Funded account purchase request submitted');
@@ -894,13 +1064,13 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
       setAllUsers((prev) =>
         prev.map((u) =>
           u.id === approved!.userId
-            ? { ...u, balance: (u.balance ?? 0) + approved!.accountCapital }
+            ? { ...u, balance: (u.balance ?? 0) + approved!.capital }
             : u
         )
       );
       // update current user/account if applicable
       if (user && user.id === approved.userId) {
-        const newBal = (user.balance ?? 0) + approved.accountCapital;
+        const newBal = (user.balance ?? 0) + approved.capital;
         setUser({ ...user, balance: newBal });
         setAccount((prev) => ({ ...prev, balance: newBal }));
       }
@@ -920,13 +1090,14 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
       setAllUsers((prev) =>
         prev.map((u) =>
           u.id === account.userId
-            ? { ...u, balance: (u.balance ?? 0) + account.platformFee }
+            ? { ...u, balance: (u.balance ?? 0) + account.price }
             : u
         )
       );
     }
     alert('✅ Funded account rejected and fee refunded');
   };
+
 
   // Bot Template Methods
   const addBotTemplate = (name: string, description: string, price: number, performance: number, winRate: number, trades: number, type: string, risk: 'Low' | 'Medium' | 'High', maxDrawdown: number) => {
@@ -1045,6 +1216,36 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
     alert('✅ Now copying trader');
   };
 
+  // admin helper: directly create active copy trade for user
+  const adminCreateCopyTrade = (
+    userId: string,
+    traderName: string,
+    allocation: number,
+    durationValue: string,
+    durationType: 'hours' | 'days',
+    risk: 'Low' | 'Medium' | 'High',
+    performance?: number
+  ) => {
+    const newCopy: CopyTrade = {
+      id: generateId(),
+      userId,
+      tradesId: Date.now(),
+      traderName,
+      allocation,
+      status: 'ACTIVE',
+      copiedTrades: 0,
+      profit: 0,
+      startDate: Date.now(),
+      durationValue,
+      durationType,
+      winRate: '0%',
+      risk,
+      performance
+    };
+    setPurchasedCopyTrades((prev) => [...prev, newCopy]);
+    alert('✅ Admin created copy trade for user');
+  };
+
   const stopCopyTrading = (copyTradeId: string) => {
     setPurchasedCopyTrades((prev) =>
       prev.map((ct) => (ct.id === copyTradeId ? { ...ct, status: 'CLOSED', endDate: Date.now() } : ct))
@@ -1080,6 +1281,118 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
   // Get user transactions
   const getUserTransactions = (userId: string): Transaction[] => {
     return transactions.filter((t) => t.userId === userId);
+  };
+
+  // Admin methods to manually create bots, signals, and copy trades
+  const adminCreateBot = (userId: string, botName: string, allocatedAmount: number, performance: number, totalEarned: number = 0) => {
+    const newBot: PurchasedBot = {
+      id: generateId(),
+      userId,
+      botId: generateId(),
+      botName,
+      allocatedAmount,
+      totalEarned,
+      totalLost: 0,
+      status: 'ACTIVE',
+      purchasedAt: Date.now(),
+      approvedAt: Date.now(),
+      performance,
+      dailyReturn: Math.random() * (15 - 5) + 5
+    };
+    setPurchasedBots((prev) => [...prev, newBot]);
+    // Deduct allocated amount from user balance
+    setAllUsers((prev) =>
+      prev.map((u) =>
+        u.id === userId ? { ...u, balance: (u.balance ?? 0) - allocatedAmount } : u
+      )
+    );
+    if (user && user.id === userId) {
+      const newBal = (user.balance ?? 0) - allocatedAmount;
+      setUser({ ...user, balance: newBal });
+      setAccount((prev) => ({ ...prev, balance: newBal }));
+    }
+    alert(`✅ Bot created for user and auto-activated`);
+  };
+
+  const adminCreateSignal = (userId: string, providerName: string, allocation: number, winRate: number, cost: number = 0) => {
+    const now = Date.now();
+    const durationMs = (15 + Math.random() * 6) * 60 * 1000;
+    const expectedProfit = allocation * (winRate / 100);
+    const newSignal: PurchasedSignal = {
+      id: generateId(),
+      userId,
+      signalId: generateId(),
+      providerName,
+      allocation,
+      cost,
+      status: 'ACTIVE',
+      subscribedAt: now,
+      approvedAt: now,
+      tradesFollowed: 0,
+      winRate,
+      earnings: 0,
+      totalEarningsRealized: 0,
+      activeTrades: [
+        {
+          id: generateId(),
+          startTime: now,
+          expectedEndTime: now + durationMs,
+          expectedProfit,
+          currentEarnings: 0,
+          completed: false
+        }
+      ]
+    };
+    setPurchasedSignals((prev) => [...prev, newSignal]);
+    // Deduct allocation + cost from user balance
+    const totalDeduction = allocation + cost;
+    setAllUsers((prev) =>
+      prev.map((u) =>
+        u.id === userId ? { ...u, balance: (u.balance ?? 0) - totalDeduction } : u
+      )
+    );
+    if (user && user.id === userId) {
+      const newBal = (user.balance ?? 0) - totalDeduction;
+      setUser({ ...user, balance: newBal });
+      setAccount((prev) => ({ ...prev, balance: newBal }));
+    }
+    alert(`✅ Signal subscription created and auto-activated`);
+  };
+
+
+  // Convert active funded accounts for a user into main balance (one-way)
+  const convertFundedToBalance = (userId?: string) => {
+    const uid = userId || user?.id;
+    if (!uid) return;
+    const toConvert = purchasedFundedAccounts.filter(
+      (a) => a.userId === uid && a.status === 'ACTIVE'
+    );
+    if (toConvert.length === 0) {
+      alert('No active funded accounts to convert');
+      return;
+    }
+    const total = toConvert.reduce((s, a) => s + a.capital, 0);
+
+    // mark as completed/credited
+    setPurchasedFundedAccounts((prev) =>
+      prev.map((a) =>
+        a.userId === uid && a.status === 'ACTIVE'
+          ? { ...a, status: 'COMPLETED', creditedAt: Date.now() }
+          : a
+      )
+    );
+
+    // credit allUsers and current user/account if active
+    setAllUsers((prev) =>
+      prev.map((u) => (u.id === uid ? { ...u, balance: (u.balance ?? 0) + total } : u))
+    );
+    if (user && user.id === uid) {
+      const newBal = (user.balance ?? 0) + total;
+      setUser({ ...user, balance: newBal });
+      setAccount((prev) => ({ ...prev, balance: newBal }));
+    }
+
+    alert(`✅ Converted $${total.toFixed(2)} funded capital to main balance`);
   };
 
   return (
@@ -1119,12 +1432,17 @@ export function StoreProvider({ children }: {children: React.ReactNode;}) {
         resumeBot,
         terminateBot,
         terminateSignal,
+        continueSignalTrading,
         followTrader,
         stopCopyTrading,
         closeCopyTrade,
         purchaseFundedAccount,
         approveFundedAccount,
         rejectFundedAccount,
+        convertFundedToBalance,
+        adminCreateBot,
+        adminCreateSignal,
+        adminCreateCopyTrade,
         addBotTemplate,
         editBotTemplate,
         deleteBotTemplate,

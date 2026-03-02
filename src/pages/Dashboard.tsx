@@ -19,7 +19,7 @@ interface DashboardProps {
   onNavigate: (page: string) => void;
 }
 export function Dashboard({ onNavigate }: DashboardProps) {
-  const { account, trades, user, assets, history, purchasedBots, purchasedSignals, purchasedCopyTrades, purchasedFundedAccounts } = useStore();
+  const { account, trades, user, assets, history, purchasedBots, purchasedSignals, purchasedCopyTrades, purchasedFundedAccounts, convertFundedToBalance } = useStore();
   const totalProfit = trades.reduce((sum, t) => sum + t.profit, 0);
   const botEarnings = purchasedBots.reduce((sum, b) => sum + b.totalEarned, 0);
   const signalEarnings = purchasedSignals.reduce((sum, s) => sum + s.earnings, 0);
@@ -32,7 +32,8 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const pendingFundedCount = userFunded.filter(f => f.status === 'PENDING_APPROVAL').length;
   const fundedCapital = userFunded
     .filter(f => f.status === 'ACTIVE')
-    .reduce((sum, f) => sum + f.accountCapital, 0);
+    .reduce((sum, f) => sum + f.capital, 0);
+  const totalBalanceWithFunded = account.balance;
   return (
     <div className="min-h-screen bg-[#0d1117] text-[#c9d1d9] p-4 md:p-6 space-y-6 pb-20 md:pb-6">
       {/* Welcome Banner */}
@@ -53,6 +54,18 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             ID: {user?.id || '8829102'}
           </span>
         </div>
+      </div>
+      <div className="flex gap-2 mt-2">
+        <button
+          onClick={() => convertFundedToBalance()}
+          disabled={fundedCapital <= 0}
+          className="px-3 py-2 bg-[#2962ff] hover:bg-[#1f57d8] text-white text-xs font-mono font-bold rounded disabled:opacity-50"
+        >
+          Convert Funded → Balance
+        </button>
+        {fundedCapital <= 0 && (
+          <span className="text-xs text-[#8b949e] self-center">No funded capital</span>
+        )}
       </div>
 
       {/* Top Bar Info */}
@@ -100,6 +113,11 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           color: totalProfit >= 0 ? 'text-[#26a69a]' : 'text-[#ef5350]'
         },
         {
+          label: 'Funded Balance',
+          value: formatCurrency(fundedCapital),
+          color: fundedCapital > 0 ? 'text-[#2962ff]' : 'text-[#8b949e]'
+        },
+        {
           label: 'Open Trades',
           value: trades.length.toString(),
           color: 'text-white'
@@ -108,8 +126,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           label: 'Funded Accounts',
           value: userFunded.length.toString(),
           color: 'text-[#2962ff]'
-        }].
-        map((stat) =>
+        }].map((stat) =>
         <div
           key={stat.label}
           className={`bg-[#161b22] border border-[#21262d] p-4 rounded-sm ${stat.highlight ? 'bg-gradient-to-br from-[#161b22] to-[#1c2128] border-l-2 border-l-[#2962ff]' : ''}`}>

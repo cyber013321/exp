@@ -100,13 +100,23 @@ export type PurchasedSignal = {
   userId: string;
   signalId: string;
   providerName: string;
-  cost: number;
-  status: 'PENDING_APPROVAL' | 'ACTIVE' | 'EXPIRED';
+  allocation: number; // capital locked for signal trading
+  cost: number; // one-time subscription paid upfront
+  status: 'PENDING_APPROVAL' | 'ACTIVE' | 'EXPIRED' | 'CLOSED';
   subscribedAt: number;
   approvedAt?: number;
-  tradesFollowed: number;
-  winRate: number;
-  earnings: number;
+  tradesFollowed: number; // total trades executed
+  winRate: number; // e.g., 78 = 78%
+  earnings: number; // fluctuating, converges to final by minute 21
+  totalEarningsRealized: number; // sum of all completed trades
+  activeTrades: Array<{
+    id: string;
+    startTime: number;
+    expectedEndTime: number; // startTime + 15-21 min
+    expectedProfit: number; // allocation * (winRate / 100)
+    currentEarnings: number; // fluctuating
+    completed: boolean;
+  }>;
 };
 
 export type CopyTrade = {
